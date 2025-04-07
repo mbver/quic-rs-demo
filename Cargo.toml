@@ -1,0 +1,10 @@
+[package]
+name = "quic-rs-demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[[example]]
+name = "basic-client"
+path = "basic/client.rs"
