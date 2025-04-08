@@ -4,6 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.97"
+rcgen = "0.13.2"
+rustls = "0.23.25"
+
+[[example]]
+name = "basic-genkey"
+path = "basic/key_gen.rs"
 
 [[example]]
 name = "basic-client"
