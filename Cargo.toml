@@ -5,12 +5,19 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.97"
+colored = "3.0.0"
+quinn = "0.11.7"
 rcgen = "0.13.2"
 rustls = "0.23.25"
+tokio = { version = "1.44.2", features = ["rt", "rt-multi-thread", "macros", "time"] }
 
 [[example]]
 name = "basic-genkey"
 path = "basic/key_gen.rs"
+
+[[example]]
+name = "basic-server"
+path = "basic/server.rs"
 
 [[example]]
 name = "basic-client"
