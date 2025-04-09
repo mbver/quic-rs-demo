@@ -2,11 +2,9 @@ use rustls::{
   pki_types::{CertificateDer, PrivateKeyDer},
   crypto::{CryptoProvider, aws_lc_rs},
 };
+use core::ascii;
 use std::{
-  fs, 
-  net::SocketAddr, 
-  path::Path, 
-  sync::Arc
+  fmt::Write, fs, net::SocketAddr, path::Path, sync::Arc, str,
 };
 use anyhow::{Context, Result, bail};
 use quinn::{
@@ -54,8 +52,10 @@ async fn main() -> Result<()> {
     addr.to_string().blue());
 
   while let Some(conn) = endpoint.accept().await {
-    println!("accepting connection from {}", conn.remote_address())
-
+    println!("accepting connection from {}", conn.remote_address());
+    tokio::spawn(async move {
+      handle_conn(conn).await
+    });  
   }
   Ok(())
 }
@@ -85,9 +85,39 @@ async fn handle_stream((mut send, mut recv):(SendStream, RecvStream)) -> Result<
   let req = recv
   .read_to_end(64*1024)
   .await
-  .context("failed reading request");
+  .context("failed reading request")?;
 
+  let mut escaped = String::new();
+  for &x in &req {
+    for c in ascii::escape_default(x) {
+      escaped.write_char(c as char).unwrap();
+    }
+  }
+  println!("req {}", escaped);
 
-
+  let resp = handle_req(&req).unwrap_or_else(
+    |e| {
+      println!("handle request failed: {}", e);
+      String::from("failed to handle request").into_bytes()
+  });
+  send.write_all(&resp).await.context("failed to send response")?;
+  send.finish().unwrap();
+  println!("complete stream handling!");
   Ok(())
+}
+
+fn handle_req(req: &[u8]) -> Result<Vec<u8>> {
+  // only accept GET request
+  if req.len() < 4 || &req[0..4] != b"GET" {
+    bail!("missing GET");
+  }
+  if req[4..].len() < 2 || &req[req.len() - 2..] != b"\r\n" {
+      bail!("missing \\r\\n");
+  }
+  let filename = &req[4..req.len()-2];
+  let filename = str::from_utf8(&filename).context("filename is malformed UTF-8")?;
+  let path = Path::new(file!());
+  let path = path.parent().unwrap().join(filename);
+  let bytes = fs::read(&path).context("failed reading file")?;
+  Ok(bytes)
 }
