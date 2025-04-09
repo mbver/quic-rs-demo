@@ -108,7 +108,7 @@ async fn handle_stream((mut send, mut recv):(SendStream, RecvStream)) -> Result<
 
 fn handle_req(req: &[u8]) -> Result<Vec<u8>> {
   // only accept GET request
-  if req.len() < 4 || &req[0..4] != b"GET" {
+  if req.len() < 4 || &req[0..4] != b"GET " {
     bail!("missing GET");
   }
   if req[4..].len() < 2 || &req[req.len() - 2..] != b"\r\n" {
