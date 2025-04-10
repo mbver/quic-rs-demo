@@ -22,3 +22,28 @@ path = "basic/server.rs"
 [[example]]
 name = "basic-client"
 path = "basic/client.rs"
+
+
+[[example]]
+name = "alpn-genkey"
+path = "alpn/key_gen.rs"
+
+[[example]]
+name = "alpn-server"
+path = "alpn/server.rs"
+
+[[example]]
+name = "alpn-client-h1"
+path = "alpn/client_h1.rs"
+
+[[example]]
+name = "alpn-client-h2"
+path = "alpn/client_h2.rs"
+
+[[example]]
+name = "alpn-client-no-alpn"
+path = "alpn/client_no_alpn.rs"
+
+[[example]]
+name = "alpn-client-h3"
+path = "alpn/client_h3.rs"
