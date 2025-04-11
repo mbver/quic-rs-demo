@@ -5,10 +5,16 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.97"
+base64 = "0.22.1"
 colored = "3.0.0"
+hmac = "0.12.1"
 quinn = "0.11.7"
+rand = "0.9.0"
 rcgen = "0.13.2"
 rustls = "0.23.25"
+serde = { version="1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+sha2 = "0.10.8"
 tokio = { version = "1.44.2", features = ["rt", "rt-multi-thread", "macros", "time"] }
 
 [[example]]
@@ -47,3 +53,16 @@ path = "alpn/client_no_alpn.rs"
 [[example]]
 name = "alpn-client-h3"
 path = "alpn/client_h3.rs"
+
+
+[[example]]
+name = "session-genkey"
+path = "session/key_gen.rs"
+
+[[example]]
+name = "session-server"
+path = "session/server.rs"
+
+[[example]]
+name = "session-client"
+path = "session/client.rs"
