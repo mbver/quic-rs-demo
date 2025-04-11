@@ -26,7 +26,7 @@ mod common;
 
 const CERT_DIR: &str = "/tmp/quinn_certs";
 const ADMIN_PWD_HASH: &str = "bUUlwqIfm+HMqeQfOqQC4HZe5fzD5/6jShabFzCuOG4=";
-
+const AUTH_BEARER_HEADER: &[u8] = b"Authentication Bearer ";
 type HmacSha256 = Hmac<Sha256>;
 
 #[tokio::main]
@@ -79,7 +79,7 @@ async fn handle_conn(incomming: quinn::Incoming) -> Result<()> {
 
   loop {
     let stream = conn.accept_bi().await;
-    let stream = match stream {
+    let (mut send, mut recv) = match stream {
       Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
         println!("connection closed");
         return Ok(());
@@ -90,10 +90,25 @@ async fn handle_conn(incomming: quinn::Incoming) -> Result<()> {
       Ok(s) => s
     };
     tokio::spawn(async move {
-      handle_stream(stream).await
+      handle_stream(&mut send, &mut recv, &key).await
     });
   }
 }
+
+struct ErrClientFinished;
+
+impl std::fmt::Debug for ErrClientFinished {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("ClientFinished: client sent FIN")
+    }
+}
+
+impl std::fmt::Display for ErrClientFinished {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+      write!(f, "client sent FIN")
+  }
+}
+impl std::error::Error for ErrClientFinished {}
 
 async fn read_line(recv: &mut RecvStream) -> Result<Vec<u8>> {
     let mut buf = Vec::new();
@@ -134,11 +149,14 @@ fn gen_session(key: &[u8]) -> Result<Vec<u8>> {
   Ok(json_bytes)
 } 
 
+
+
 async fn auth(
-  (mut send, mut recv):(SendStream, RecvStream),
+  send: &mut SendStream, 
+  recv: &mut RecvStream,
   key: &[u8],
 ) -> Result<()> {
-  let mut req = read_line(&mut recv).await.context("failed reading request")?;
+  let mut req = read_line(recv).await.context("failed reading request")?;
   if !req.starts_with(b"POST ") {
     bail!("missing POST ");
   }
@@ -148,7 +166,7 @@ async fn auth(
     bail!("missing /login");
   }
 
-  let content_length = read_line(&mut recv).await.context("failed reading content-length")?;
+  let content_length = read_line(recv).await.context("failed reading content-length")?;
   let content_length = str::from_utf8(&content_length)?.parse::<usize>()?;
   let mut body = vec![0; content_length];
   recv.read_exact(&mut body).await.context("failed reading body")?;
@@ -165,42 +183,68 @@ async fn auth(
 }
 
 
-async fn handle_stream((mut send, mut recv):(SendStream, RecvStream)) -> Result<()> {
-  let req = recv
-  .read_to_end(64*1024)
-  .await
-  .context("failed reading request")?;
-
-  let mut escaped = String::new();
-  for &x in &req {
-    for c in ascii::escape_default(x) {
-      escaped.write_char(c as char).unwrap();
-    }
+async fn verify_session(recv: &mut RecvStream, key: &[u8]) -> Result<()> {
+  let mut line = read_line(recv).await.context("failed reading session data")?;
+  if line.len() == 0 {
+    return Err(ErrClientFinished{}.into());
   }
-  println!("req {}", escaped);
+  if !line.starts_with(AUTH_BEARER_HEADER) {
+    bail!("missing Authentication Bearer ");
+  }
+  line.drain(0..AUTH_BEARER_HEADER.len());
+  let session: Session = serde_json::from_slice(&line)?;
+  let sig = sign_token(key, &session.token)?;
+  if sig != session.signature {
+    bail!("wrong signature");
+  }
+  Ok(())
+}
 
-  let resp = handle_req(&req).unwrap_or_else(
-    |e| {
-      println!("handle request failed: {}", e);
-      String::from("failed to handle request").into_bytes()
-  });
-  send.write_all(&resp).await.context("failed to send response")?;
+async fn handle_stream(send: &mut SendStream, recv: &mut RecvStream, key: &[u8]) -> Result<()> {
+  auth(send, recv, key).await.context("authentication failed")?;
+
+  loop {
+    match verify_session(recv, key).await.context("verify session failed") {
+        Ok(_) => {},
+        Err(e) if e.downcast_ref::<ErrClientFinished>().is_some() => {
+          println!("client has finished (sent FIN)");
+          break;
+        }
+        Err(e) => {
+          println!("verify session failed: {:?}", e);
+          return Err(e);
+        }
+    };
+    let mut req = read_line(recv).await.context("failed reading request")?;
+    let mut escaped = String::new();
+    for &x in &req {
+      for c in ascii::escape_default(x) {
+        escaped.write_char(c as char).unwrap();
+      }
+    }
+    println!("req {}", escaped);
+  
+    let resp = handle_req(&mut req).unwrap_or_else(
+      |e| {
+        println!("handle request failed: {}", e);
+        String::from("failed to handle request").into_bytes()
+    });
+    send.write_all(&resp).await.context("failed to send response")?;
+  }
   send.finish().unwrap();
   println!("complete stream handling!");
   Ok(())
 }
 
 
-fn handle_req(req: &[u8]) -> Result<Vec<u8>> {
+fn handle_req(req: &mut Vec<u8>) -> Result<Vec<u8>> {
   // only accept GET request
-  if req.len() < 4 || &req[0..4] != b"GET " {
-    bail!("missing GET");
+  if !req.starts_with(b"GET ") {
+    bail!("missing GET ");
   }
-  if req[4..].len() < 2 || &req[req.len() - 2..] != b"\r\n" {
-      bail!("missing \\r\\n");
-  }
-  let filename = &req[4..req.len()-2];
-  let filename = str::from_utf8(&filename).context("filename is malformed UTF-8")?;
+  req.drain(0..4);
+
+  let filename = str::from_utf8(req).context("filename is malformed UTF-8")?;
   let path = Path::new(file!());
   let path = path.parent().unwrap().join(filename);
   let bytes = fs::read(&path).context("failed reading file")?;
