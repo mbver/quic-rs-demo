@@ -20,6 +20,7 @@ mod common;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+  // setup connection
   let cert_dir: &Path = Path::new(CERT_DIR);
   let cert_path= cert_dir.join("cert.der");
   let mut cert_root = rustls::RootCertStore::empty();
@@ -46,11 +47,12 @@ async fn main() -> Result<()> {
     .context("failed to connect to server")?;
   
   println!("connected to server {}", server_addr.to_string());
-
   let (mut send, mut recv) = conn
   .open_bi()
   .await
   .context("failed to open stream")?;
+
+  // login and receive session token
   let login= Login{
     username: ADMIN_USERNAME.to_string(), 
     password: ADMIN_PWD.to_string(),
@@ -71,6 +73,8 @@ async fn main() -> Result<()> {
   let session: Session = serde_json::from_slice(&buf[0..n]).context("failed to deserialize session")?;
   let session_str = serde_json::to_string(&session)?;
   println!("✅ Login success. Session token received");
+
+  // send 3 requests with session token as Authentication Bearer
   let req = format!("Authentication Bearer {}\r\nGET {}\r\n", session_str, "sample.json");
   for i in 0..3 {
     println!("\nsending request number {}...", i);
@@ -91,4 +95,3 @@ async fn main() -> Result<()> {
   conn.close(0u32.into(), b"done");
   Ok(())
 }
-

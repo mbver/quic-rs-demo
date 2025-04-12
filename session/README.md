@@ -8,8 +8,6 @@ This guide extends the basic example to build a minimal protocol that supports a
 
 ## 🔐 Step 1: Generate TLS Certificates
 
-QUIC requires TLS. Generate a simple, self-signed certificate for `localhost`
-
 ```bash
 cargo run --example session-genkey
 ```
