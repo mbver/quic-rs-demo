@@ -96,18 +96,28 @@ async fn handle_conn(incomming: quinn::Incoming) -> Result<()> {
 }
 
 async fn handle_stream(send: &mut SendStream, recv: &mut RecvStream, key: &[u8]) -> Result<()> {
-  auth(send, recv, key).await.context("authentication failed")?;
+  match auth(send, recv, key).await {
+    Ok(_) => {}
+    Err(e) => {
+      println!("authentication failed: {:?}", e);
+      send.write_all("🔒 AUTH ERROR: authentication failed\n".as_bytes()).await?;
+      return Err(e);
+    }
+  }
+  println!("✅ AUTH SUCCESS");
 
   loop {
     // check session token for every new request
-    match verify_session(recv, key).await.context("verify session failed") {
-        Ok(_) => {},
-        Err(e) if e.downcast_ref::<ErrClientFinished>().is_some() => {
-          println!("client has finished (sent FIN)");
-          break;
-        }
+    match verify_session(recv, key).await {
+        Ok(_) => {
+          println!("✅ session verified");
+        },
         Err(e) => {
-          println!("verify session failed: {:?}", e);
+          if e.to_string().contains("connection lost") {
+            println!("🛑 client closed, exiting...");
+            break
+          }
+          println!("❌ session verification failed: {:?}", e);
           return Err(e);
         }
     };
@@ -129,6 +139,7 @@ async fn handle_stream(send: &mut SendStream, recv: &mut RecvStream, key: &[u8])
         String::from("failed to handle request").into_bytes()
     });
     send.write_all(&resp).await.context("failed to send response")?;
+    println!("done respond to request {}\n", escaped)
   }
   send.finish().unwrap();
   println!("complete stream handling!");
@@ -171,11 +182,8 @@ async fn auth(
 }
 
 async fn verify_session(recv: &mut RecvStream, key: &[u8]) -> Result<()> {
-  let mut line = read_line(recv).await.context("failed reading session data")?;
+  let mut line = read_line(recv).await?;
   // parse session header
-  if line.len() == 0 {
-    return Err(ErrClientFinished{}.into());
-  }
   if !line.starts_with(AUTH_BEARER_HEADER) {
     bail!("missing Authentication Bearer ");
   }
@@ -203,22 +211,6 @@ fn handle_req(req: &mut Vec<u8>) -> Result<Vec<u8>> {
   let bytes = fs::read(&path).context("failed reading file")?;
   Ok(bytes)
 }
-
-
-struct ErrClientFinished;
-
-impl std::fmt::Debug for ErrClientFinished {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str("ClientFinished: client sent FIN")
-    }
-}
-
-impl std::fmt::Display for ErrClientFinished {
-  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-      write!(f, "client sent FIN")
-  }
-}
-impl std::error::Error for ErrClientFinished {}
 
 async fn read_line(recv: &mut RecvStream) -> Result<Vec<u8>> {
   let mut buf = Vec::new();

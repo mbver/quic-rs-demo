@@ -44,7 +44,7 @@ response received:
   "disclaimer": "QUIC is quick 🏎️💨",
   "version": "0.1.0",
   "listening_on": "127.0.0.1:4843"
-}%     
+}     
 ```
 
 expected output on server

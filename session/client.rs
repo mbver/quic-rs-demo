@@ -2,6 +2,7 @@ use std::{
   fs, io::{self, Write}, net::SocketAddr, path::Path, sync::Arc
 };
 use anyhow::{Context, Result};
+use common::{Login, ADMIN_USERNAME, Session};
 use rustls::{
   pki_types::CertificateDer,
   crypto::{CryptoProvider, aws_lc_rs},
@@ -50,23 +51,44 @@ async fn main() -> Result<()> {
   .open_bi()
   .await
   .context("failed to open stream")?;
+  let login= Login{
+    username: ADMIN_USERNAME.to_string(), 
+    password: ADMIN_PWD.to_string(),
+  };
+  let login_str = serde_json::to_string(&login).unwrap();
+  let content_length = login_str.len();
 
-  let req = format!("GET {}\r\n", "sample.json");
+  let req: String = format!("POST /login\r\n{}\r\n{}", content_length, login_str);
   send.write_all(req.as_bytes())
     .await
     .context("failed to send request")?;
+
+  let mut buf = [0u8; 1024];
+  let n: usize = recv
+                          .read(&mut buf)
+                          .await?
+                          .expect("failed reading session cookie");
+  let session: Session = serde_json::from_slice(&buf[0..n]).context("failed to deserialize session")?;
+  let session_str = serde_json::to_string(&session)?;
+  println!("✅ Login success. Session token received");
+  let req = format!("Authentication Bearer {}\r\nGET {}\r\n", session_str, "sample.json");
+  for i in 0..3 {
+    println!("\nsending request number {}...", i);
+    send.write_all(req.as_bytes())
+      .await
+      .context("failed to send request")?;
+    let n: usize = recv
+    .read(&mut buf)
+    .await?
+    .expect("failed reading response");
+    println!("response received:");
+
+    io::stdout().write_all(&buf[0..n]).unwrap();
+    io::stdout().flush().unwrap();
+    println!();
+  }
   send.finish().unwrap();
-
-  let resp = recv
-    .read_to_end(usize::MAX)
-    .await
-    .context("failed to read response")?;
-
-  println!("response received:");
-
-  io::stdout().write_all(&resp).unwrap();
-  io::stdout().flush().unwrap();
   conn.close(0u32.into(), b"done");
-
   Ok(())
 }
+
