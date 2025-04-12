@@ -95,6 +95,116 @@ async fn handle_conn(incomming: quinn::Incoming) -> Result<()> {
   }
 }
 
+async fn handle_stream(send: &mut SendStream, recv: &mut RecvStream, key: &[u8]) -> Result<()> {
+  auth(send, recv, key).await.context("authentication failed")?;
+
+  loop {
+    // check session token for every new request
+    match verify_session(recv, key).await.context("verify session failed") {
+        Ok(_) => {},
+        Err(e) if e.downcast_ref::<ErrClientFinished>().is_some() => {
+          println!("client has finished (sent FIN)");
+          break;
+        }
+        Err(e) => {
+          println!("verify session failed: {:?}", e);
+          return Err(e);
+        }
+    };
+    let mut req = read_line(recv).await.context("failed reading request")?;
+
+    // log the request
+    let mut escaped = String::new();
+    for &x in &req {
+      for c in ascii::escape_default(x) {
+        escaped.write_char(c as char).unwrap();
+      }
+    }
+    println!("req {}", escaped);
+    
+    // handle request and respond
+    let resp = handle_req(&mut req).unwrap_or_else(
+      |e| {
+        println!("handle request failed: {}", e);
+        String::from("failed to handle request").into_bytes()
+    });
+    send.write_all(&resp).await.context("failed to send response")?;
+  }
+  send.finish().unwrap();
+  println!("complete stream handling!");
+  Ok(())
+}
+
+async fn auth(
+  send: &mut SendStream, 
+  recv: &mut RecvStream,
+  key: &[u8],
+) -> Result<()> {
+  let mut req = read_line(recv).await.context("failed reading request")?;
+  // parse login request
+  if !req.starts_with(b"POST ") {
+    bail!("missing POST ");
+  }
+  req.drain(0..5);
+  if req != b"/login" {
+    bail!("missing /login");
+  }
+
+  // parse content length
+  let content_length = read_line(recv).await.context("failed reading content-length")?;
+  let content_length = str::from_utf8(&content_length)?.parse::<usize>()?;
+  // read login data
+  let mut body = vec![0; content_length];
+  recv.read_exact(&mut body).await.context("failed reading body")?;
+
+  // check login data
+  let login: Login = serde_json::from_slice(&body).context("failed to deserialize login")?;
+  if login.username != ADMIN_USERNAME && hash_pwd(&login.password) != ADMIN_PWD_HASH {
+    bail!("wrong username or password");
+  }
+  
+  // generate session token and send to client
+  let session_bytes = gen_session(key)?;
+  send.write_all(&session_bytes).await.context("failed to send session bytes")?;
+  println!("🪪 Session established and token sent to client.");
+  Ok(())
+}
+
+async fn verify_session(recv: &mut RecvStream, key: &[u8]) -> Result<()> {
+  let mut line = read_line(recv).await.context("failed reading session data")?;
+  // parse session header
+  if line.len() == 0 {
+    return Err(ErrClientFinished{}.into());
+  }
+  if !line.starts_with(AUTH_BEARER_HEADER) {
+    bail!("missing Authentication Bearer ");
+  }
+  line.drain(0..AUTH_BEARER_HEADER.len());
+  // deserialize session data
+  let session: Session = serde_json::from_slice(&line)?;
+  // check session siganture
+  let sig = sign_token(key, &session.token)?;
+  if sig != session.signature {
+    bail!("wrong signature");
+  }
+  Ok(())
+}
+
+fn handle_req(req: &mut Vec<u8>) -> Result<Vec<u8>> {
+  // only accept GET request
+  if !req.starts_with(b"GET ") {
+    bail!("missing GET ");
+  }
+  req.drain(0..4);
+
+  let filename = str::from_utf8(req).context("filename is malformed UTF-8")?;
+  let path = Path::new(file!());
+  let path = path.parent().unwrap().join(filename);
+  let bytes = fs::read(&path).context("failed reading file")?;
+  Ok(bytes)
+}
+
+
 struct ErrClientFinished;
 
 impl std::fmt::Debug for ErrClientFinished {
@@ -111,17 +221,17 @@ impl std::fmt::Display for ErrClientFinished {
 impl std::error::Error for ErrClientFinished {}
 
 async fn read_line(recv: &mut RecvStream) -> Result<Vec<u8>> {
-    let mut buf = Vec::new();
-    let mut byte = [0u8; 1];
+  let mut buf = Vec::new();
+  let mut byte = [0u8; 1];
 
-    while recv.read(&mut byte).await? == Some(1) {
-        buf.push(byte[0]);
-        if buf.ends_with(b"\r\n") {
-            buf.truncate(buf.len() - 2);
-            break;
-        }
+  while recv.read(&mut byte).await? == Some(1) {
+    buf.push(byte[0]);
+    if buf.ends_with(b"\r\n") {
+      buf.truncate(buf.len() - 2);
+      break;
     }
-    Ok(buf)
+  }
+  Ok(buf)
 }
 
 fn hash_pwd(pwd: &str) -> String {
@@ -148,105 +258,3 @@ fn gen_session(key: &[u8]) -> Result<Vec<u8>> {
   let json_bytes = serde_json::to_vec(&session)?;
   Ok(json_bytes)
 } 
-
-
-
-async fn auth(
-  send: &mut SendStream, 
-  recv: &mut RecvStream,
-  key: &[u8],
-) -> Result<()> {
-  let mut req = read_line(recv).await.context("failed reading request")?;
-  if !req.starts_with(b"POST ") {
-    bail!("missing POST ");
-  }
-  req.drain(0..5);
-
-  if req != b"/login" {
-    bail!("missing /login");
-  }
-
-  let content_length = read_line(recv).await.context("failed reading content-length")?;
-  let content_length = str::from_utf8(&content_length)?.parse::<usize>()?;
-  let mut body = vec![0; content_length];
-  recv.read_exact(&mut body).await.context("failed reading body")?;
-
-  let login: Login = serde_json::from_slice(&body).context("failed to deserialize login")?;
-  if login.username != ADMIN_USERNAME && hash_pwd(&login.password) != ADMIN_PWD_HASH {
-    bail!("wrong username or password");
-  }
-  
-  let session_bytes = gen_session(key)?;
-  send.write_all(&session_bytes).await.context("failed to send session bytes")?;
-  println!("🪪 Session established and token sent to client.");
-  Ok(())
-}
-
-
-async fn verify_session(recv: &mut RecvStream, key: &[u8]) -> Result<()> {
-  let mut line = read_line(recv).await.context("failed reading session data")?;
-  if line.len() == 0 {
-    return Err(ErrClientFinished{}.into());
-  }
-  if !line.starts_with(AUTH_BEARER_HEADER) {
-    bail!("missing Authentication Bearer ");
-  }
-  line.drain(0..AUTH_BEARER_HEADER.len());
-  let session: Session = serde_json::from_slice(&line)?;
-  let sig = sign_token(key, &session.token)?;
-  if sig != session.signature {
-    bail!("wrong signature");
-  }
-  Ok(())
-}
-
-async fn handle_stream(send: &mut SendStream, recv: &mut RecvStream, key: &[u8]) -> Result<()> {
-  auth(send, recv, key).await.context("authentication failed")?;
-
-  loop {
-    match verify_session(recv, key).await.context("verify session failed") {
-        Ok(_) => {},
-        Err(e) if e.downcast_ref::<ErrClientFinished>().is_some() => {
-          println!("client has finished (sent FIN)");
-          break;
-        }
-        Err(e) => {
-          println!("verify session failed: {:?}", e);
-          return Err(e);
-        }
-    };
-    let mut req = read_line(recv).await.context("failed reading request")?;
-    let mut escaped = String::new();
-    for &x in &req {
-      for c in ascii::escape_default(x) {
-        escaped.write_char(c as char).unwrap();
-      }
-    }
-    println!("req {}", escaped);
-  
-    let resp = handle_req(&mut req).unwrap_or_else(
-      |e| {
-        println!("handle request failed: {}", e);
-        String::from("failed to handle request").into_bytes()
-    });
-    send.write_all(&resp).await.context("failed to send response")?;
-  }
-  send.finish().unwrap();
-  println!("complete stream handling!");
-  Ok(())
-}
-
-
-fn handle_req(req: &mut Vec<u8>) -> Result<Vec<u8>> {
-  // only accept GET request
-  if !req.starts_with(b"GET ") {
-    bail!("missing GET ");
-  }
-  req.drain(0..4);
-
-  let filename = str::from_utf8(req).context("filename is malformed UTF-8")?;
-  let path = Path::new(file!());
-  let path = path.parent().unwrap().join(filename);
-  let bytes = fs::read(&path).context("failed reading file")?;
-  Ok(bytes)
-}
