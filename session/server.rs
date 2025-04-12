@@ -104,7 +104,6 @@ async fn handle_stream(send: &mut SendStream, recv: &mut RecvStream, key: &[u8])
       return Err(e);
     }
   }
-  println!("✅ AUTH SUCCESS");
 
   loop {
     // check session token for every new request
@@ -173,11 +172,11 @@ async fn auth(
   if login.username != ADMIN_USERNAME && hash_pwd(&login.password) != ADMIN_PWD_HASH {
     bail!("wrong username or password");
   }
-  
+  println!("✅ AUTH SUCCESS");
   // generate session token and send to client
   let session_bytes = gen_session(key)?;
   send.write_all(&session_bytes).await.context("failed to send session bytes")?;
-  println!("🪪 Session established and token sent to client.");
+  println!("🪪 Session established and token sent to client.\n");
   Ok(())
 }
 

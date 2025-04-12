@@ -61,8 +61,9 @@ expected output on server
 ```
 accepting connection from 127.0.0.1:4385
 established connection from 127.0.0.1:4385
-🪪 Session established and token sent to client.
 ✅ AUTH SUCCESS
+🪪 Session established and token sent to client.
+
 ✅ session verified
 req GET sample.json
 done respond to request GET sample.json
