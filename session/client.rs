@@ -93,5 +93,31 @@ async fn main() -> Result<()> {
   }
   send.finish().unwrap();
   conn.close(0u32.into(), b"done");
+
+  println!("\n🔄 starting new connection to reuse session token ...");
+  let conn = endpoint
+    .connect(server_addr,"localhost" )?
+    .await
+    .context("failed to connect to server")?;
+  
+  println!("connected to server {}", server_addr.to_string());
+  let (mut send, mut recv) = conn
+  .open_bi()
+  .await
+  .context("failed to open stream")?;
+
+  send.write_all(req.as_bytes())
+    .await
+    .context("failed to send request")?;
+
+  let n: usize = recv
+    .read(&mut buf)
+    .await?
+    .expect("failed reading response");
+  println!("response received:");
+
+  io::stdout().write_all(&buf[0..n]).unwrap();
+  io::stdout().flush().unwrap();
+  println!();
   Ok(())
 }

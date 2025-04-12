@@ -1,4 +1,4 @@
-🚀 Minimal QUIC Server and Client with Authentication and Session Management Using Quinn
+# 🚀 Minimal QUIC Server and Client with Authentication and Session Management
 
 This guide extends the basic example to build a minimal protocol that supports authentication and session management using the Quinn library in Rust.​
 
@@ -54,7 +54,12 @@ response received:
   "disclaimer": "QUIC is quick 🏎️💨",
   "version": "0.1.0",
   "listening_on": "127.0.0.1:4843"
-}    
+}
+
+🔄 starting new connection to reuse session token ...
+connected to server 127.0.0.1:4843
+response received:
+🔒 AUTH ERROR: authentication failed
 ```
 
 expected output on server
@@ -79,4 +84,9 @@ done respond to request GET sample.json
 connection closed
 🛑 client closed, exiting...
 complete stream handling!
+
+accepting connection from 127.0.0.1:4385
+established connection from 127.0.0.1:4385
+🚫 authentication failed: missing POST 
+connection closed
 ```

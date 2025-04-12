@@ -99,7 +99,7 @@ async fn handle_stream(send: &mut SendStream, recv: &mut RecvStream, key: &[u8])
   match auth(send, recv, key).await {
     Ok(_) => {}
     Err(e) => {
-      println!("authentication failed: {:?}", e);
+      println!("🚫 authentication failed: {:?}", e);
       send.write_all("🔒 AUTH ERROR: authentication failed\n".as_bytes()).await?;
       return Err(e);
     }
@@ -141,7 +141,7 @@ async fn handle_stream(send: &mut SendStream, recv: &mut RecvStream, key: &[u8])
     println!("done respond to request {}\n", escaped)
   }
   send.finish().unwrap();
-  println!("complete stream handling!");
+  println!("complete stream handling!\n");
   Ok(())
 }
 
