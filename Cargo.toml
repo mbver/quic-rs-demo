@@ -66,3 +66,15 @@ path = "session/server.rs"
 [[example]]
 name = "session-client"
 path = "session/client.rs"
+
+[[example]]
+name = "datagram-genkey"
+path = "datagram/key_gen.rs"
+
+[[example]]
+name = "datagram-server"
+path = "datagram/server.rs"
+
+[[example]]
+name = "datagram-client"
+path = "datagram/client.rs"
