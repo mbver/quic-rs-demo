@@ -78,3 +78,15 @@ path = "datagram/server.rs"
 [[example]]
 name = "datagram-client"
 path = "datagram/client.rs"
+
+[[example]]
+name = "multiplexing-genkey"
+path = "multiplexing/key_gen.rs"
+
+[[example]]
+name = "multiplexing-server"
+path = "multiplexing/server.rs"
+
+[[example]]
+name = "multiplexing-client"
+path = "multiplexing/client.rs"
