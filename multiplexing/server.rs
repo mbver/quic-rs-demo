@@ -4,13 +4,14 @@ use rustls::{
 };
 use core::ascii;
 use std::{
-  fmt::Write, fs, net::SocketAddr, path::Path, sync::Arc, str,
+  fmt::Write, fs, net::SocketAddr, path::Path, str, sync::Arc, time::Duration
 };
 use anyhow::{Context, Result, bail};
 use quinn::{
   crypto::rustls::QuicServerConfig,
   Endpoint,
   ServerConfig,
+  TransportConfig,
   SendStream, 
   RecvStream,
 };
@@ -39,8 +40,12 @@ async fn main() -> Result<()> {
   .with_no_client_auth()
   .with_single_cert(vec![cert], key)?;
 
+  let mut transport_config = TransportConfig::default();
+  transport_config.max_idle_timeout(Some(Duration::from_secs(2).try_into()?));
+
   let quic_config = QuicServerConfig::try_from(tls_config)?;
-  let server_config = ServerConfig::with_crypto(Arc::new(quic_config));
+  let mut server_config = ServerConfig::with_crypto(Arc::new(quic_config));
+  server_config.transport_config(Arc::new(transport_config));
 
   let addr: SocketAddr = "127.0.0.1:4843".parse()?;
   let endpoint = Endpoint::server(server_config, addr)?;
@@ -72,6 +77,10 @@ async fn handle_conn(incomming: quinn::Incoming) -> Result<()> {
             println!("connection closed");
             return Ok(());
           },
+          Err(quinn::ConnectionError::TimedOut {..}) => {
+            println!("timeout waiting, drop connection");
+            return Ok(());
+          }
           Err(e) => {
             return Err(e.into());
           }
@@ -83,17 +92,6 @@ async fn handle_conn(incomming: quinn::Incoming) -> Result<()> {
         }
       }
     }
-    // let stream = conn.accept_bi().await;
-    // let (send, recv) = match stream {
-    //   Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-    //     println!("connection closed");
-    //     return Ok(());
-    // }
-    //   Err(e) => {
-    //     return Err(e.into());
-    //   }
-    //   Ok(s) => s
-    // };
   }
 }
 

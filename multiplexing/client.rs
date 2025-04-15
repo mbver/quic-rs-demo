@@ -1,5 +1,5 @@
 use std::{
-  fs, io::{self, Write}, net::SocketAddr, path::Path, sync::Arc
+  fs, io::{self, Write}, net::SocketAddr, path::Path, sync::Arc, time::Duration,
 };
 use anyhow::{Context, Result};
 use rustls::{
@@ -49,8 +49,11 @@ async fn main() -> Result<()> {
     get_sample(&conn, 1),
   )?;
 
+  println!("\nclosing connection...");
+  // gracefully close the connection
   conn.close(0u32.into(), b"done");
-
+  tokio::time::sleep(Duration::from_millis(100)).await;
+  println!("done");
   Ok(())
 }
 
