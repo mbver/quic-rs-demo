@@ -6,17 +6,17 @@ A minimal example showcasing QUIC datagram support: how to send and receive data
 ## 🔐 Step 1: Generate TLS Certificates
 
 ```bash
-cargo run --example basic-genkey
+cargo run --example datagram-genkey
 ```
 
 ## 🖥️ Step 2: Start the Server
 ```bash
-cargo run --example basic-server
+cargo run --example datagram-server
 ```
 
 ## 🧑‍💻 Step 3: Run the Client
 ```bash
-cargo run --example basic-client
+cargo run --example datagram-client
 ```
 expected output on client
 ```
