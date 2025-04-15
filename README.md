@@ -14,3 +14,6 @@ Explores various Application-Layer Protocol Negotiation (ALPN) configurations to
 ## Session
 Demonstrates a minimal protocol that supports authentication and session management.
 
+## Datagram
+Demonstrates QUIC datagram support in Quinn
+
