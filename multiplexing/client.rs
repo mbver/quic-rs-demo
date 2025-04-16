@@ -47,6 +47,8 @@ async fn main() -> Result<()> {
   tokio::try_join!(
     get_sample(&conn, 0),
     get_sample(&conn, 1),
+    upload_data(&conn),
+    send_datagram(&conn),
   )?;
 
   println!("\nclosing connection...");
@@ -62,7 +64,7 @@ async fn get_sample(conn: &Connection, stream_no: u32) -> Result<()> {
   let (mut send, mut recv) = conn
   .open_bi()
   .await
-  .context("failed to open stream")?;
+  .context("failed to open bi_stream")?;
   println!("stream number {} is sending request ...", stream_no);
   let req = format!("GET {}\r\n", "sample.json");
   send.write_all(req.as_bytes())
@@ -81,5 +83,33 @@ async fn get_sample(conn: &Connection, stream_no: u32) -> Result<()> {
   io::stdout().write_all(&resp).unwrap();
   io::stdout().flush().unwrap();
   println!("");
+  Ok(())
+}
+
+async fn upload_data(conn: &Connection) -> Result<()> {
+  println!("\nopen unidirectional stream");
+  let mut send = conn
+  .open_uni()
+  .await
+  .context("failed to open uni_stream")?;
+
+  let path = Path::new(file!());
+  let path = path.parent().unwrap().join("sample.json");
+  let data = fs::read(&path).context("failed reading file")?;
+  println!("uni_stream uploading data...");
+  send.write_all(&data)
+    .await
+    .context("failed to send request")?;
+  send.finish().unwrap();
+  println!("Done uploading data with uni_stream!");
+  Ok(())
+}
+
+async fn send_datagram(conn: &Connection) -> Result<()> {
+  println!("\nStart sending/receiving datagram...");
+  conn.send_datagram(b"Hello from client"[..].into()).context("failed to send datagram")?;
+  let msg = conn.read_datagram().await.context("failed to receive datagram response")?;
+  println!("recevied datagram response: \n{}", std::str::from_utf8(&msg)?);
+  println!("Done sending/receiving datagram!");
   Ok(())
 }

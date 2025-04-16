@@ -4,16 +4,20 @@ use rustls::{
 };
 use core::ascii;
 use std::{
-  fmt::Write, fs, net::SocketAddr, path::Path, str, sync::Arc, time::Duration
+  fmt::Write, fs, io::{self}, net::SocketAddr, path::Path, str, sync::Arc, time::Duration
 };
+use io::Write as IoWrite;
 use anyhow::{Context, Result, bail};
 use quinn::{
   crypto::rustls::QuicServerConfig,
   Endpoint,
   ServerConfig,
   TransportConfig,
+  Incoming,
+  Connection,
   SendStream, 
   RecvStream,
+  ConnectionError,
 };
 use colored::*;
 // use  proto::crypto::rustls::QuicServerConfig,
@@ -65,29 +69,49 @@ async fn main() -> Result<()> {
   Ok(())
 }
 
-async fn handle_conn(incomming: quinn::Incoming) -> Result<()> {
+async fn handle_conn(incomming: Incoming) -> Result<()> {
   let conn = incomming.await?;
   println!("established connection from {}", conn.remote_address());
   loop {
     tokio::select! {
       result = conn.accept_bi() => {
-        println!("accepting bidirectional stream...");
         match result {
-          Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-            println!("connection closed");
-            return Ok(());
-          },
-          Err(quinn::ConnectionError::TimedOut {..}) => {
-            println!("timeout waiting, drop connection");
-            return Ok(());
-          }
           Err(e) => {
-            return Err(e.into());
+            return handle_error(e);
           }
           Ok((send, recv)) => {
+            println!("accepting bidirectional stream...");
             tokio::spawn(async move {
               handle_bi_stream(send, recv).await
             });
+          }
+        }
+      }
+
+      result = conn.accept_uni() => {
+        match result {
+          Err(e) => {
+            return handle_error(e);
+          }
+          Ok(recv) => {
+            println!("accepting unidirectional stream...");
+            tokio::spawn(async move {
+              handle_uni_stream(recv).await
+            });
+          }
+        }
+      }
+
+      result = conn.read_datagram() => {
+        match result {
+          Err(e) => {
+            return handle_error(e);
+          }
+          Ok(msg) => {
+            println!("accepting datagram from client...");
+            if let Err(e) = handle_datagram(&conn, msg) {
+              eprintln!("datagram error {:?}", e);
+            }
           }
         }
       }
@@ -134,4 +158,48 @@ fn handle_req(req: &[u8]) -> Result<Vec<u8>> {
   let path = path.parent().unwrap().join(filename);
   let bytes = fs::read(&path).context("failed reading file")?;
   Ok(bytes)
+}
+
+async fn handle_uni_stream(mut recv: RecvStream) -> Result<()> {
+  let data = recv
+    .read_to_end(64*1024)
+    .await
+    .context("failed reading data")?;
+
+    println!("\ndata received from client:");
+
+  io::stdout().write_all(&data).unwrap();
+  io::stdout().flush().unwrap();
+  println!("\nDone handle uni_stream!");
+  Ok(())
+}
+
+fn handle_error(e: ConnectionError) -> Result<()> {
+  match e {
+    quinn::ConnectionError::ApplicationClosed { .. } => {
+      println!("connection closed");
+      Ok(())
+    }
+    quinn::ConnectionError::TimedOut { .. } => {
+      println!("timeout waiting, drop connection");
+      Ok(())
+    }
+    other => Err(other.into()),
+  }
+}
+
+fn handle_datagram(conn: &Connection, msg: bytes::Bytes) -> Result<()> {
+  let msg = std::str::from_utf8(&msg);
+  match msg {
+    Ok(msg) => {
+      println!("received datagram: \n{}", msg);
+      println!("sending datagram to client {}...", conn.remote_address());
+      conn.send_datagram(b"Hello from server"[..].into()).context("failed to send datagram response")?;
+      println!("Done respond to datagram!");
+      Ok(())
+    }
+    Err(e) => {
+      Err(e.into())
+    }
+  }
 }
