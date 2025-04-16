@@ -91,3 +91,15 @@ path = "multiplexing/server.rs"
 [[example]]
 name = "multiplexing-client"
 path = "multiplexing/client.rs"
+
+[[example]]
+name = "mtls-genkey"
+path = "mTLS/key_gen.rs"
+
+[[example]]
+name = "mtls-server"
+path = "mTLS/server.rs"
+
+[[example]]
+name = "mtls-client"
+path = "mTLS/client.rs"
