@@ -1,18 +1,13 @@
-# 🚀 Minimal QUIC Server & Client with Quinn
+# 🚀 mTLS setup for QUIC with Quinn
 
-This guide walks through a bare-bones example of creating a QUIC server and client using the [Quinn](https://github.com/quinn-rs/quinn) library in Rust. It covers certificate generation, starting a server, and connecting with a client.
-
+This guide extends the basic example to illustrate how mTLS is setup in Quinn
 ---
 
 ## 🔐 Step 1: Generate TLS Certificates
 
-QUIC requires TLS. Generate a simple, self-signed certificate for `localhost`
-
 ```bash
 cargo run --example mtls-genkey
 ```
-
-
 expected output:
 ```
 ✅ Finished generating key!
@@ -27,16 +22,14 @@ expected output:
 ```bash
 cargo run --example mtls-server
 ```
-expected output
-```
-🚀 QUIC server listening at: 127.0.0.1:4843
-```
 
 ## 🧑‍💻 Step 3: Run the Client
 ```bash
 cargo run --example mtls-client
 ```
-expected output on client
+expected output on client.
+
+Notice how bad client is optimistic until the actual read occurs.
 ```
 connected to server 127.0.0.1:4843
 response received:
@@ -46,14 +39,29 @@ response received:
   "disclaimer": "QUIC is quick 🏎️💨",
   "version": "0.1.0",
   "listening_on": "127.0.0.1:4843"
-}     
+}
+
+anonymous client connecting...
+connected to server 127.0.0.1:4843
+anonymous client opening stream...
+done opening stream!
+anonymous client sending request...
+done sending request!
+anonymous client reading response...
+✅ Expected Error: Read(ConnectionLost(ConnectionClosed(ConnectionClose { error_code: Code::crypto(74), frame_type: None, reason: b"peer sent no certificates" })))
 ```
 
-expected output on server
+expected output on server.
+
+Notice how the server rejects bad client early.
 ```
-accepting connection from 127.0.0.1:4385
-established connection from 127.0.0.1:4385
+accepting connection from 127.0.0.1:4385...
 req GET sample.json\r\n
 complete stream handling!
 connection closed
+accepting connection from 127.0.0.1:4386...
+Error handle incomming connection failed to accept incoming connection
+
+Caused by:
+    the cryptographic handshake failed: error 116: peer sent no certificates
 ```

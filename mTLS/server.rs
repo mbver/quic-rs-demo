@@ -62,17 +62,18 @@ async fn main() -> Result<()> {
     addr.to_string().blue());
 
   while let Some(conn) = endpoint.accept().await {
-    println!("accepting connection from {}", conn.remote_address());
+    println!("accepting connection from {}...", conn.remote_address());
     tokio::spawn(async move {
-      handle_conn(conn).await
+      if let Err(err) = handle_conn(conn).await {
+        eprintln!("Error handle incomming connection {:?}", err);
+      }
     });  
   }
   Ok(())
 }
 
 async fn handle_conn(incomming: quinn::Incoming) -> Result<()> {
-  let conn = incomming.await?;
-  println!("established connection from {}", conn.remote_address());
+  let conn = incomming.await.context("failed to accept incoming connection")?;
   loop {
     let stream = conn.accept_bi().await;
     let stream = match stream {
@@ -96,7 +97,6 @@ async fn handle_stream((mut send, mut recv):(SendStream, RecvStream)) -> Result<
   .read_to_end(64*1024)
   .await
   .context("failed reading request")?;
-  println!("read to end done");
   let mut escaped = String::new();
   for &x in &req {
     for c in ascii::escape_default(x) {

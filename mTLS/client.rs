@@ -1,5 +1,5 @@
 use std::{
-  fs, io::{self, Write}, net::SocketAddr, path::Path, sync::Arc, time::Duration,
+  fs, io::{self, Write}, net::SocketAddr, path::Path, sync::Arc,
 };
 use anyhow::{Context, Result};
 use rustls::{
@@ -120,10 +120,12 @@ async fn main() -> Result<()> {
 
   match result {
     Ok(_) => {
-      println!("expect error");
+      // We expected this to fail, so success is an error.
+      eprintln!("❌ Unexpected success: expected the connection to fail due to missing certificate.");
+      std::process::exit(1); // or return Err(...) if inside a function
     }
     Err(e) => {
-      println!("Error: {:?}", e)
+      println!("✅ Expected Error: {:?}", e);
     }
   }
   conn.close(0u32.into(), b"done");
