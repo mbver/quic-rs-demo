@@ -17,3 +17,5 @@ Demonstrates a minimal protocol that supports authentication and session managem
 ## Datagram
 Demonstrates QUIC datagram support in Quinn
 
+## Multiplexing
+Demonstrates QUIC multiplexing capability
