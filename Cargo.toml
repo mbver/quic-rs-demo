@@ -103,3 +103,15 @@ path = "mTLS/server.rs"
 [[example]]
 name = "mtls-client"
 path = "mTLS/client.rs"
+
+[[example]]
+name = "zeroRTT-genkey"
+path = "zero_RTT/key_gen.rs"
+
+[[example]]
+name = "zeroRTT-server"
+path = "zero_RTT/server.rs"
+
+[[example]]
+name = "zeroRTT-client"
+path = "zero_RTT/client.rs"
