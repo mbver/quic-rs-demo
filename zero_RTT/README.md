@@ -1,4 +1,4 @@
-# 🚀 Minimal QUIC Server & Client with Quinn
+# 🚀 Minimal Zero-RTT setup in Quinn
 
 This guide walks through the basic setup to work with 0-RTT in Quinn
 ---
