@@ -1,3 +1,7 @@
 /target
 
-notes*
+*notes*
+
+*.log
+
+*.svg

@@ -1,14 +1,12 @@
-use rustls::{
-  pki_types::{CertificateDer, PrivateKeyDer},
-  crypto::{CryptoProvider, aws_lc_rs},
-};
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use core::ascii;
 use std::{
-  fmt::Write, fs, net::SocketAddr, path::Path, sync::Arc, str,
+  fmt::Write, fs, net::{SocketAddr, UdpSocket}, path::Path, sync::Arc, str,
 };
 use anyhow::{Context, Result, bail};
 use quinn::{
-  crypto::rustls::QuicServerConfig,
+  EndpointConfig,
+  TokioRuntime,
   Endpoint,
   ServerConfig,
   SendStream, 
@@ -21,30 +19,7 @@ const CERT_DIR: &str = "/tmp/quinn_certs";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-  let cert_dir: &Path = Path::new(CERT_DIR);
-  let cert_path= cert_dir.join("cert.der");
-  let key_path = cert_dir.join("key.der");
-
-  let bytes = fs::read(cert_path).context("failed to read certificate")?;
-  let cert = CertificateDer::try_from(bytes)?;
-
-  let bytes = fs::read(key_path).context("failed to read private key")?;
-  let key =  PrivateKeyDer::try_from(bytes).map_err(anyhow::Error::msg)?;
-
-  CryptoProvider::install_default(
-    aws_lc_rs::default_provider()
-  ).expect("failed to install default crypto provider");
-
-  let tls_config = rustls::ServerConfig::builder()
-  .with_no_client_auth()
-  .with_single_cert(vec![cert], key)?;
-
-  let quic_config = QuicServerConfig::try_from(tls_config)?;
-  let server_config = ServerConfig::with_crypto(Arc::new(quic_config));
-
-  let addr: SocketAddr = "127.0.0.1:4843".parse()?;
-  let endpoint = Endpoint::server(server_config, addr)?;
-
+  let endpoint = endpoint();
   let addr = endpoint.local_addr()?;
   println!(
     "{} {}",
@@ -61,22 +36,11 @@ async fn main() -> Result<()> {
 }
 
 async fn handle_conn(incomming: quinn::Incoming) -> Result<()> {
-  let connecting = incomming.accept().context("failed to transition to connecting state")?;
-  let (conn, _) = match connecting.into_0rtt() {
-    Ok(pair) => {
-      println!("0-RTT succeeded");
-      pair
-    },
-    Err(_) => {
-      println!("0-RTT failed");
-      bail!("0-RTT failed")
-    },
-  };
-
+  let conn = incomming.await?;
   println!("established connection from {}", conn.remote_address());
   loop {
     let stream = conn.accept_bi().await;
-    let stream = match stream {
+    let (send, recv) = match stream {
       Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
         println!("connection closed");
         return Ok(());
@@ -87,12 +51,12 @@ async fn handle_conn(incomming: quinn::Incoming) -> Result<()> {
       Ok(s) => s
     };
     tokio::spawn(async move {
-      handle_stream(stream).await
+      handle_stream(send, recv).await
     });
   }
 }
 
-async fn handle_stream((mut send, mut recv):(SendStream, RecvStream)) -> Result<()> {
+async fn handle_stream(mut send: SendStream, mut recv: RecvStream) -> Result<()> {
   let req = recv
   .read_to_end(64*1024)
   .await
@@ -131,4 +95,35 @@ fn handle_req(req: &[u8]) -> Result<Vec<u8>> {
   let path = path.parent().unwrap().join(filename);
   let bytes = fs::read(&path).context("failed reading file")?;
   Ok(bytes)
+}
+
+// TODO: 0RTT only works if we setup server and client endpoint with Endpoint::new
+// instead of Endpoint::server and Endpoint::client. WHY?
+fn endpoint() -> Endpoint {
+  let cert_dir: &Path = Path::new(CERT_DIR);
+  let cert_path= cert_dir.join("cert.der");
+  let key_path = cert_dir.join("key.der");
+
+  let bytes = fs::read(cert_path).context("failed to read certificate").unwrap();
+  let cert = CertificateDer::try_from(bytes).unwrap();
+
+  let bytes = fs::read(key_path).context("failed to read private key").unwrap();
+  let key =  PrivateKeyDer::try_from(bytes).map_err(anyhow::Error::msg).unwrap();
+
+
+  let server_config = ServerConfig::with_single_cert(
+  vec![cert.clone()], key).unwrap();
+  let mut roots = rustls::RootCertStore::empty();
+  roots.add(cert.clone()).unwrap();
+
+  let addr: SocketAddr = "127.0.0.1:4843".parse().unwrap();
+
+  let endpoint = Endpoint::new(
+    EndpointConfig::default(),
+    Some(server_config),
+    UdpSocket::bind(addr).unwrap(),
+    Arc::new(TokioRuntime),
+  ).unwrap();
+
+  endpoint
 }
