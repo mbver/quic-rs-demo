@@ -38,18 +38,32 @@ resuming connection...
   "disclaimer": "QUIC is quick 🏎️💨",
   "version": "0.1.0",
   "listening_on": "127.0.0.1:4843"
-}  
+}
+resending request...
+{
+  "message": "Welcome to Awesome Quinn!",
+  "note": "Not to be confused with Queen 👑",
+  "disclaimer": "QUIC is quick 🏎️💨",
+  "version": "0.1.0",
+  "listening_on": "127.0.0.1:4843"
+}
 ```
 
 expected output on server
 ```
-accepting connection from 127.0.0.1:4385
+accepting incomming connection from 127.0.0.1:4385
 established connection from 127.0.0.1:4385
 req GET sample.json\r\n
+req is_0rtt false
 complete stream handling!
 connection closed
-accepting connection from 127.0.0.1:4385
+accepting incomming connection from 127.0.0.1:4385
 established connection from 127.0.0.1:4385
 req GET sample.json\r\n
+req is_0rtt true
 complete stream handling!
+req GET sample.json\r\n
+req is_0rtt false
+complete stream handling!
+connection closed
 ```

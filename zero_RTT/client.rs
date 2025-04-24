@@ -1,5 +1,5 @@
 use std::{
-  fs, io::{self, Write}, net::{SocketAddr, UdpSocket}, path::Path, sync::Arc,
+  fs, io::{self, Write}, net::{SocketAddr, UdpSocket}, path::Path, sync::Arc, time::Duration,
 };
 use anyhow::{Context, Result};
 use rustls::pki_types::CertificateDer;
@@ -36,16 +36,18 @@ async fn main() -> Result<()> {
 
   println!("resuming connection...");
 
-  let (conn, zero_rtt) = endpoint
+  let (conn, _zero_rtt) = endpoint
   .connect(server_addr, "localhost")
   .unwrap()
   .into_0rtt()
   .unwrap_or_else(|_| panic!("missing 0-RTT keys"));
-  zero_rtt.await;
-
+  
   println!("0-RTT connected server {}", server_addr.to_string());
   get_sample(&conn).await.context("failed to get sample.json")?;
-
+  println!("resending request...");
+  get_sample(&conn).await.context("failed to get sample.json")?;
+  drop(conn);
+  tokio::time::sleep(Duration::from_millis(100)).await;
   Ok(())
 }
 

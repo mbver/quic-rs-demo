@@ -3,12 +3,14 @@ use core::ascii;
 use std::{
   fmt::Write, fs, net::{SocketAddr, UdpSocket}, path::Path, sync::Arc, str,
 };
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, anyhow};
 use quinn::{
   EndpointConfig,
   TokioRuntime,
   Endpoint,
   ServerConfig,
+  Connection,
+  Incoming,
   SendStream, 
   RecvStream,
 };
@@ -26,18 +28,32 @@ async fn main() -> Result<()> {
     "🚀 QUIC server listening at:".bold().green(),
     addr.to_string().blue());
 
-  while let Some(conn) = endpoint.accept().await {
-    println!("accepting connection from {}", conn.remote_address());
+  while let Some(incomming) = endpoint.accept().await {
+    println!("accepting incomming connection from {}", incomming.remote_address());
     tokio::spawn(async move {
-      handle_conn(conn).await
-    });  
+      handle_incomming(incomming).await
+    }); 
   }
   Ok(())
 }
 
-async fn handle_conn(incomming: quinn::Incoming) -> Result<()> {
-  let conn = incomming.await?;
+async fn handle_incomming(incomming: Incoming) -> Result<()> {
+  let connecting = incomming.accept()?;
+  // into_0rtt is degraded to full handshake if 0-rtt is rejected
+  // TODO: zero_rtt is always false even 0RTT is accepted. IS THIS A BUG?
+  let Ok((conn, _zero_rtt))= connecting.into_0rtt() else {
+    return Err(anyhow!("failed establishing connection"));
+  };
   println!("established connection from {}", conn.remote_address());
+
+  tokio::spawn(async move {
+    handle_conn(conn).await
+  });
+
+  Ok(())
+}
+
+async fn handle_conn(conn: Connection) -> Result<()> {
   loop {
     let stream = conn.accept_bi().await;
     let (send, recv) = match stream {
@@ -57,6 +73,7 @@ async fn handle_conn(incomming: quinn::Incoming) -> Result<()> {
 }
 
 async fn handle_stream(mut send: SendStream, mut recv: RecvStream) -> Result<()> {
+  let is_0rtt = recv.is_0rtt();
   let req = recv
   .read_to_end(64*1024)
   .await
@@ -70,7 +87,7 @@ async fn handle_stream(mut send: SendStream, mut recv: RecvStream) -> Result<()>
   }
   println!("req {}", escaped);
 
-  let resp = handle_req(&req).unwrap_or_else(
+  let resp = handle_req(&req, is_0rtt).unwrap_or_else(
     |e| {
       println!("handle request failed: {}", e);
       String::from("failed to handle request").into_bytes()
@@ -81,7 +98,8 @@ async fn handle_stream(mut send: SendStream, mut recv: RecvStream) -> Result<()>
   Ok(())
 }
 
-fn handle_req(req: &[u8]) -> Result<Vec<u8>> {
+fn handle_req(req: &[u8], is_0rtt: bool) -> Result<Vec<u8>> {
+  println!("req is_0rtt {}", is_0rtt);
   // only accept GET request
   if req.len() < 4 || &req[0..4] != b"GET " {
     bail!("missing GET");
