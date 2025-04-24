@@ -58,7 +58,7 @@ async fn handle_conn(conn: Connection) -> Result<()> {
     let stream = conn.accept_bi().await;
     let (send, recv) = match stream {
       Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-        println!("connection closed");
+        println!("connection closed\n");
         return Ok(());
     }
       Err(e) => {
@@ -100,19 +100,50 @@ async fn handle_stream(mut send: SendStream, mut recv: RecvStream) -> Result<()>
 
 fn handle_req(req: &[u8], is_0rtt: bool) -> Result<Vec<u8>> {
   println!("req is_0rtt {}", is_0rtt);
-  // only accept GET request
-  if req.len() < 4 || &req[0..4] != b"GET " {
-    bail!("missing GET");
+  if is_get(req) {
+    return handle_get(&req[4..]);
   }
-  if req[4..].len() < 2 || &req[req.len() - 2..] != b"\r\n" {
-      bail!("missing \\r\\n");
+  if is_0rtt {
+    bail!("0-RTT is not applied to POST")
   }
-  let filename = &req[4..req.len()-2];
+  if is_post(req) {
+    return handle_post(&req[5..]);
+  }
+  bail!("not a GET or POST request");
+}
+
+fn is_get(req: &[u8]) -> bool {
+  req.len() > 4 && &req[0..4] == b"GET "
+}
+
+fn handle_get(req: &[u8]) ->  Result<Vec<u8>> {
+  if req.len() < 2 || &req[req.len() - 2..] != b"\r\n" {
+    bail!("missing \\r\\n");
+  }
+  let filename = &req[..req.len()-2];
   let filename = str::from_utf8(&filename).context("filename is malformed UTF-8")?;
   let path = Path::new(file!());
   let path = path.parent().unwrap().join(filename);
   let bytes = fs::read(&path).context("failed reading file")?;
   Ok(bytes)
+}
+
+fn is_post(req: &[u8]) -> bool {
+  req.len() > 5 && &req[0..5] == b"POST "
+}
+
+fn handle_post(req: &[u8]) ->  Result<Vec<u8>> {
+  if req.len() < 2 || &req[req.len() - 2..] != b"\r\n" {
+    bail!("missing \\r\\n");
+  }
+  let req = &req[..req.len()-2];
+  if !req.starts_with(b"/something ") {
+    bail!("something is missing");
+  }
+  let body = &req[10..];
+  let str = String::from_utf8(body.to_vec())?;
+  println!("client post: {}", str);
+  Ok(b"successfully post".to_vec())
 }
 
 // TODO: 0RTT only works if we setup server and client endpoint with Endpoint::new
@@ -127,7 +158,6 @@ fn endpoint() -> Endpoint {
 
   let bytes = fs::read(key_path).context("failed to read private key").unwrap();
   let key =  PrivateKeyDer::try_from(bytes).map_err(anyhow::Error::msg).unwrap();
-
 
   let server_config = ServerConfig::with_single_cert(
   vec![cert.clone()], key).unwrap();

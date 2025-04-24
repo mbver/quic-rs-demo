@@ -24,4 +24,4 @@ Demonstrates QUIC multiplexing capability
 Illustrate how mTLS is setup in Quinn
 
 ## zero-RTT
-Demonstrate a basic setup for 0-RTT
+Demonstrate end-to-end setup of 0-RTT in Quinn

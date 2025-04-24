@@ -1,5 +1,5 @@
 use std::{
-  fs, io::{self, Write}, net::{SocketAddr, UdpSocket}, path::Path, sync::Arc, time::Duration,
+  fs, io::{self, Write}, net::{SocketAddr, UdpSocket}, path::Path, sync::Arc,
 };
 use anyhow::{Context, Result};
 use rustls::pki_types::CertificateDer;
@@ -24,30 +24,44 @@ async fn main() -> Result<()> {
   .unwrap()
   .into_0rtt()
   .err()
-  .expect("0-RTT succeeded without keys")
+  .expect("0-RTT should not succeed without established connection to resume")
   .await
   .expect("connect");
 
   println!("connected to server {}", server_addr.to_string());
 
   get_sample(&conn).await.context("failed to get sample.json")?;
-  
+  println!("posting something in full handshake...");
+  post_something(&conn).await.context("failed to post something")?;
   drop(conn);
 
-  println!("resuming connection...");
+  println!("\nresuming connection...");
 
   let (conn, _zero_rtt) = endpoint
   .connect(server_addr, "localhost")
   .unwrap()
   .into_0rtt()
-  .unwrap_or_else(|_| panic!("missing 0-RTT keys"));
+  .unwrap_or_else(|_| panic!("resuming connection with 0-RTT failed"));
   
   println!("0-RTT connected server {}", server_addr.to_string());
   get_sample(&conn).await.context("failed to get sample.json")?;
   println!("resending request...");
   get_sample(&conn).await.context("failed to get sample.json")?;
+  println!("posting something after 0-rtt...");
+  post_something(&conn).await.context("failed to post something after 0-RTT")?;
   drop(conn);
-  tokio::time::sleep(Duration::from_millis(100)).await;
+
+  println!("\nresuming connection again...");
+  let (conn, _zero_rtt) = endpoint
+  .connect(server_addr, "localhost")
+  .unwrap()
+  .into_0rtt()
+  .unwrap_or_else(|_| panic!("resuming connection with 0-RTT failed"));
+  
+  println!("0-RTT connected server {}", server_addr.to_string());
+  println!("posting something in 0-rtt...");
+  post_something(&conn).await?;
+
   Ok(())
 }
 
@@ -58,6 +72,27 @@ async fn get_sample(conn: &Connection) -> Result<()> {
   .await
   .context("failed to open bi_stream")?;
   let req = format!("GET {}\r\n", "sample.json");
+  send.write_all(req.as_bytes())
+    .await
+    .context("failed to send request")?;
+  send.finish().unwrap();
+
+  let resp = recv
+    .read_to_end(usize::MAX)
+    .await
+    .context("failed to read response")?;
+  io::stdout().write_all(&resp).unwrap();
+  io::stdout().flush().unwrap();
+  println!("");
+  Ok(())
+}
+
+async fn post_something(conn: &Connection) -> Result<()> {
+  let (mut send, mut recv) = conn
+  .open_bi()
+  .await
+  .context("failed to open bi_stream")?;
+  let req = format!("POST /something {}\r\n", "some important thing");
   send.write_all(req.as_bytes())
     .await
     .context("failed to send request")?;
