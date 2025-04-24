@@ -125,7 +125,9 @@ async fn replay_attack(conn: &Connection) -> Result<()> {
       get_sample(&c).await
     });
   }
-  tokio::time::sleep(Duration::from_millis(100)).await;
+  tokio::time::sleep(Duration::from_millis(80)).await;
+  conn.close(0u32.into(), b"done");
+  tokio::time::sleep(Duration::from_millis(20)).await;
   Ok(())
 }
 
