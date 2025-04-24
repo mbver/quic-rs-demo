@@ -1,6 +1,6 @@
 # 🚀 Zero-RTT in Quinn
 
-This guide walks through the complete setup of 0-RTT in Quinn, with the server responsible for validating incoming 0-RTT requests before processing them.
+This guide walks through the complete setup of 0-RTT in Quinn, with the server responsible for validating incoming 0-RTT requests before processing them. It also includes a replay attack simulation to highlight the security concerns associated with 0-RTT.
 
 ---
 
@@ -58,6 +58,45 @@ resuming connection again...
 0-RTT connected server 127.0.0.1:4843
 posting something in 0-rtt...
 failed to handle request
+
+resuming connection for replay attack...
+0-RTT connected server 127.0.0.1:4843
+replay requests in 0-rtt...
+{
+  "message": "Welcome to Awesome Quinn!",
+  "note": "Not to be confused with Queen 👑",
+  "disclaimer": "QUIC is quick 🏎️💨",
+  "version": "0.1.0",
+  "listening_on": "127.0.0.1:4843"
+}
+{
+  "message": "Welcome to Awesome Quinn!",
+  "note": "Not to be confused with Queen 👑",
+  "disclaimer": "QUIC is quick 🏎️💨",
+  "version": "0.1.0",
+  "listening_on": "127.0.0.1:4843"
+}
+{
+  "message": "Welcome to Awesome Quinn!",
+  "note": "Not to be confused with Queen 👑",
+  "disclaimer": "QUIC is quick 🏎️💨",
+  "version": "0.1.0",
+  "listening_on": "127.0.0.1:4843"
+}
+{
+  "message": "Welcome to Awesome Quinn!",
+  "note": "Not to be confused with Queen 👑",
+  "disclaimer": "QUIC is quick 🏎️💨",
+  "version": "0.1.0",
+  "listening_on": "127.0.0.1:4843"
+}
+{
+  "message": "Welcome to Awesome Quinn!",
+  "note": "Not to be confused with Queen 👑",
+  "disclaimer": "QUIC is quick 🏎️💨",
+  "version": "0.1.0",
+  "listening_on": "127.0.0.1:4843"
+}
 ```
 
 expected output on server
@@ -94,4 +133,22 @@ req is_0rtt true
 handle request failed: 0-RTT is not applied to POST
 complete stream handling!
 connection closed
+
+accepting incomming connection from 127.0.0.1:4385
+established connection from 127.0.0.1:4385
+req GET sample.json\r\n
+req is_0rtt true
+req GET sample.json\r\n
+req is_0rtt true
+req GET sample.json\r\n
+req is_0rtt true
+complete stream handling!
+complete stream handling!
+req GET sample.json\r\n
+req is_0rtt true
+req GET sample.json\r\n
+req is_0rtt true
+complete stream handling!
+complete stream handling!
+complete stream handling!
 ```

@@ -1,5 +1,5 @@
 use std::{
-  fs, io::{self, Write}, net::{SocketAddr, UdpSocket}, path::Path, sync::Arc,
+  fs, io::{self, Write}, net::{SocketAddr, UdpSocket}, path::Path, sync::Arc, time::Duration,
 };
 use anyhow::{Context, Result};
 use rustls::pki_types::CertificateDer;
@@ -61,10 +61,20 @@ async fn main() -> Result<()> {
   println!("0-RTT connected server {}", server_addr.to_string());
   println!("posting something in 0-rtt...");
   post_something(&conn).await?;
+  drop(conn);
 
+  println!("\nresuming connection for replay attack...");
+  let (conn, _zero_rtt) = endpoint
+  .connect(server_addr, "localhost")
+  .unwrap()
+  .into_0rtt()
+  .unwrap_or_else(|_| panic!("resuming connection with 0-RTT failed"));
+  
+  println!("0-RTT connected server {}", server_addr.to_string());
+  println!("replay requests in 0-rtt...");
+  replay_attack(&conn).await?;
   Ok(())
 }
-
 
 async fn get_sample(conn: &Connection) -> Result<()> {
   let (mut send, mut recv) = conn
@@ -105,6 +115,17 @@ async fn post_something(conn: &Connection) -> Result<()> {
   io::stdout().write_all(&resp).unwrap();
   io::stdout().flush().unwrap();
   println!("");
+  Ok(())
+}
+
+async fn replay_attack(conn: &Connection) -> Result<()> {
+  for _ in 0..5 {
+    let c = conn.clone();
+    tokio::spawn(async move {
+      get_sample(&c).await
+    });
+  }
+  tokio::time::sleep(Duration::from_millis(100)).await;
   Ok(())
 }
 

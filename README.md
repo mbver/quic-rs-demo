@@ -21,7 +21,7 @@ Demonstrates QUIC datagram support in Quinn
 Demonstrates QUIC multiplexing capability
 
 ## mTLS
-Illustrate how mTLS is setup in Quinn
+Illustrates how mTLS is setup in Quinn
 
 ## zero-RTT
-Demonstrate end-to-end setup of 0-RTT in Quinn
+Demonstrates end-to-end setup of 0-RTT in Quinn with replay-attack simulation
